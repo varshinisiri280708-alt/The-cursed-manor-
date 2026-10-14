@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  :root { --brass:#B8935A; --ink:#EDE1CB; --muted:#B9A9B8; --cyan:#6BE1FF; --rose:#C2465F; --accent:__ACCENT__; }
+  * { box-sizing:border-box; }
+  html, body { margin:0; background:transparent; color:var(--ink); font-family:'Cormorant Garamond', Georgia, serif; overflow:hidden; }
+  #wrap { position:relative; width:100%; aspect-ratio:16/9; max-height:100vh; margin:0 auto; background:#05030a;
+          border:1px solid var(--brass); box-shadow:0 30px 60px -20px #000; overflow:hidden; user-select:none; }
+  canvas#view { position:absolute; inset:0; width:100%; height:100%; display:block; cursor:crosshair; image-rendering:auto; }
+  .hud { position:absolute; pointer-events:none; }
+  #stats { left:14px; top:12px; width:min(270px,34%); background:rgba(18,10,22,.72); border:1px solid rgba(184,147,90,.4); padding:10px 12px; }
+  #stats h3 { margin:0 0 6px; font-family:Cinzel, Georgia, serif; font-size:15px; letter-spacing:.06em; color:#F4E6D2; font-weight:700; }
+  .bar { display:flex; align-items:center; gap:8px; font-family:Cinzel, Georgia, serif; font-size:10.5px; letter-spacing:.08em; color:var(--muted); margin:4px 0; }
+  .bar span { width:52px; } .bar .t { flex:1; height:7px; background:rgba(255,255,255,.08); } .bar .f { height:100%; transition:width .2s; }
+  #seals { margin-top:6px; display:flex; gap:6px; align-items:center; font-family:Cinzel, Georgia, serif; font-size:10.5px; color:var(--muted); letter-spacing:.08em; }
+  #seals i { width:14px; height:14px; border-radius:50%; border:1px solid rgba(255,255,255,.25); display:inline-block; }
+  #mini { right:14px; top:12px; width:min(168px,20%); border:1px solid rgba(184,147,90,.4); background:rgba(10,6,14,.75); }
+  #toast { left:50%; top:16%; transform:translateX(-50%); background:rgba(18,10,22,.85); border:1px solid rgba(184,147,90,.45);
+           padding:8px 18px; font-size:17px; opacity:0; transition:opacity .3s; text-align:center; max-width:70%; }
+  #prompt { left:50%; bottom:13%; transform:translateX(-50%); font-family:Cinzel, Georgia, serif; font-size:15px; letter-spacing:.06em;
+            color:#F4E6D2; text-shadow:0 2px 6px #000; background:rgba(8,28,40,.6); border:1px solid rgba(107,225,255,.45); padding:6px 14px; display:none; }
+  #keys { left:0; right:0; bottom:8px; text-align:center; font-family:Cinzel, Georgia, serif; font-size:10.5px; letter-spacing:.1em; color:rgba(237,225,203,.65); }
+  #cross { left:50%; top:50%; width:14px; height:14px; margin:-7px 0 0 -7px; }
+  #cross::before, #cross::after { content:""; position:absolute; background:rgba(255,255,255,.55); }
+  #cross::before { left:6px; top:0; width:2px; height:14px; } #cross::after { top:6px; left:0; height:2px; width:14px; }
+
+  .ov { position:absolute; inset:0; display:none; align-items:center; justify-content:center; background:rgba(6,3,10,.72); backdrop-filter:blur(2px); z-index:5; }
+  .ov.show { display:flex; }
+  .card { width:min(720px,88%); max-height:92%; overflow:auto; background:rgba(24,14,28,.96); border:1px solid var(--brass); padding:22px 28px; text-align:center; }
+  .card h1 { font-family:Cinzel, Georgia, serif; font-weight:900; font-size:clamp(24px,4vw,40px); margin:4px 0 8px; color:#F4E6D2; letter-spacing:.03em;
+             text-shadow:0 0 30px color-mix(in srgb, var(--accent) 50%, transparent); }
+  .card h2 { font-family:Cinzel, Georgia, serif; font-size:20px; margin:0 0 8px; color:#F4E6D2; }
+  .card p { font-size:18px; line-height:1.5; margin:6px auto; max-width:56ch; }
+  .kick { font-family:Cinzel, Georgia, serif; color:var(--brass); font-size:12px; letter-spacing:.16em; }
+  .muted { color:var(--muted); }
+  .btns { display:flex; gap:10px; justify-content:center; flex-wrap:wrap; margin-top:14px; }
+  button { font-family:Cinzel, Georgia, serif; font-weight:600; letter-spacing:.06em; font-size:13px; color:var(--ink); cursor:pointer;
+           background:linear-gradient(180deg, rgba(60,34,58,.95), rgba(30,17,32,.95)); border:1px solid rgba(184,147,90,.45); padding:10px 18px; min-width:150px; }
+  button:hover { border-color:var(--brass); box-shadow:0 0 16px -4px var(--accent); }
+  button:focus-visible { outline:2px solid var(--cyan); outline-offset:2px; }
+  button.pri { background:linear-gradient(180deg, color-mix(in srgb, var(--accent) 55%, #2a1530), color-mix(in srgb, var(--accent) 30%, #1a0d1e)); border-color:var(--brass); }
+  .tiles { display:flex; flex-wrap:wrap; gap:8px 18px; justify-content:center; margin:14px 0; }
+  .tiles .w { display:flex; gap:4px; }
+  .tiles b { width:30px; height:38px; display:grid; place-items:center; font-family:Cinzel, Georgia, serif; font-size:20px; color:var(--cyan);
+             border:1px solid rgba(107,225,255,.35); background:rgba(8,28,40,.6); text-shadow:0 0 10px rgba(107,225,255,.9); }
+  .tiles.ok b { color:#9DF5BF; border-color:rgba(157,245,191,.4); background:rgba(10,36,24,.6); text-shadow:0 0 10px rgba(157,245,191,.8); }
+  input#ans { width:100%; padding:12px 14px; font-family:Cinzel, Georgia, serif; font-size:17px; letter-spacing:.1em; color:#F4ECFF;
+              background:rgba(10,5,14,.9); border:1px solid rgba(184,147,90,.45); outline:none; }
+  input#ans:focus { border-color:var(--cyan); }
+  .wheel { display:flex; flex-wrap:wrap; gap:3px; justify-content:center; margin-top:10px; font-family:Cinzel, Georgia, serif; }
+  .wheel div { display:flex; flex-direction:column; width:24px; background:rgba(255,255,255,.04); }
+  .wheel b { font-size:12px; padding:2px 0; font-weight:600; } .wheel .e { color:#F2A9A9; } .wheel .d { color:#A6F5BC; }
+  #err { color:#FF9AAA; min-height:24px; } #hint { color:#E8A050; }
+  .dlg { position:absolute; left:50%; bottom:5%; transform:translateX(-50%); width:min(760px,90%); background:rgba(20,12,26,.95);
+         border:1px solid rgba(107,225,255,.4); padding:16px 20px; display:none; gap:16px; z-index:5; text-align:left; }
+  .dlg.show { display:flex; } .dlg.hollow { border-color:rgba(194,70,95,.55); }
+  .orb { flex:0 0 60px; height:60px; border-radius:50%; border:1px solid var(--cyan);
+         background:radial-gradient(circle at 50% 40%, #A5F1FF 0, #3BA7C4 28%, #10304A 62%, #070F18 100%); box-shadow:0 0 24px -4px var(--cyan); }
+  .dlg.hollow .orb { border-color:var(--rose); background:radial-gradient(circle at 50% 40%, #FF9AAA 0, #A2283F 30%, #2A0812 70%, #080206 100%); box-shadow:0 0 24px -4px var(--rose); }
+  .dlg .who { font-family:Cinzel, Georgia, serif; color:var(--cyan); letter-spacing:.1em; font-size:13px; margin-bottom:4px; }
+  .dlg.hollow .who { color:#FF8A9C; }
+  .dlg .line { font-size:19px; line-height:1.45; min-height:56px; }
+  .dlg .line span { opacity:0; animation:wd .3s ease forwards; } @keyframes wd { to { opacity:1 } }
+  .dlg .ch { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; } .dlg .ch button { min-width:0; font-size:12px; padding:8px 12px; }
+  .dlg .tip { font-family:Cinzel, Georgia, serif; font-size:10.5px; color:var(--muted); letter-spacing:.08em; margin-top:8px; }
+  .seal-row { text-align:left; border:1px solid rgba(184,147,90,.3); padding:8px 12px; margin:8px 0; }
+  .seal-row .tiles { justify-content:flex-start; margin:6px 0 0; } .seal-row .tiles b { width:22px; height:28px; font-size:14px; }
+  @media (prefers-reduced-motion: reduce) { .dlg .line span { animation:none; opacity:1; } }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="view" width="960" height="540" tabindex="0" aria-label="3D view of the manor"></canvas>
+  <div id="cross" class="hud"></div>
+  <div id="stats" class="hud">
+    <h3 id="lvlname">The Forgotten Foyer</h3>
+    <div class="bar"><span>Health</span><div class="t"><div class="f" id="hp" style="background:linear-gradient(90deg,#7E2034,#C2465F)"></div></div></div>
+    <div class="bar"><span>Stamina</span><div class="t"><div class="f" id="stm" style="background:linear-gradient(90deg,#2E7D52,#5FD49A)"></div></div></div>
+    <div class="bar"><span>Oil</span><div class="t"><div class="f" id="oil" style="background:linear-gradient(90deg,#9A5A1E,#E8A050)"></div></div></div>
+    <div id="seals">Seals <i></i><i></i><i></i></div>
+  </div>
+  <canvas id="mini" class="hud" width="168" height="126"></canvas>
+  <div id="toast" class="hud"></div>
+  <div id="prompt" class="hud"></div>
+  <div id="keys" class="hud">WASD move · Drag mouse or arrow keys to look · Shift sprint · Space lantern · E interact · J journal · M map · Esc pause</div>
+
+  <!-- start / pause / end overlays -->
+  <div class="ov show" id="ov-start"><div class="card">
+    <div class="kick">Explore in 3D</div><h1>Enter the manor</h1>
+    <p class="muted">Walk the halls in first person. Find the floating Witness and the glowing cyan seal, decode the cipher, then reach the Moon Door. The Hollow is listening.</p>
+    <p class="muted" style="font-size:15px">Hold the left mouse button and drag to look around, or use the arrow keys. Press Esc to pause.</p>
+    <div class="btns"><button class="pri" id="b-new">Begin chapter 1</button><button id="b-cont" style="display:none">Continue</button></div>
+  </div></div>
+  <div class="ov" id="ov-pause"><div class="card">
+    <div class="kick">Paused</div><h1>The manor holds its breath</h1>
+    <div class="btns"><button class="pri" id="b-resume">Resume</button><button id="b-journal">Open journal</button><button id="b-restart">Restart chapter 1</button></div>
+  </div></div>
+  <div class="ov" id="ov-cipher"><div class="card">
+    <div class="kick" id="c-kick">Seal 1</div><h2>The Witness's cipher</h2>
+    <p class="muted" style="font-size:16px">Every letter was pushed two places forward. Walk each one two steps back.</p>
+    <div id="c-tiles"></div>
+    <input id="ans" autocomplete="off" spellcheck="false" placeholder="Type the decoded sentence, then press Enter" aria-label="Decoded sentence">
+    <p id="err"></p><p id="hint"></p>
+    <div class="btns"><button class="pri" id="b-break">Break the seal</button><button id="b-hint">Show hint</button><button id="b-wheel">Cipher wheel</button><button id="b-leave">Step away</button></div>
+    <div class="wheel" id="c-wheel" style="display:none"></div>
+  </div></div>
+  <div class="ov" id="ov-journal"><div class="card">
+    <div class="kick">Manor journal</div><h2>Seals and secrets</h2>
+    <div id="j-body"></div><div class="wheel" id="j-wheel"></div>
+    <div class="btns"><button class="pri" id="b-jclose">Close journal</button></div>
+  </div></div>
+  <div class="ov" id="ov-msg"><div class="card">
+    <div class="kick" id="m-kick"></div><h1 id="m-title"></h1><div id="m-extra"></div><p id="m-body"></p>
+    <div class="btns" id="m-btns"></div>
+  </div></div>
+  <div class="dlg" id="dlg"><div class="orb"></div><div style="flex:1">
+    <div class="who" id="d-who"></div><div class="line" id="d-line"></div>
+    <div class="ch" id="d-ch"></div><div class="tip" id="d-tip"></div>
+  </div></div>
+</div>
+
+<script>
+const DATA = __DATA__;
+const LEVELS = DATA.levels, DIALOGUES = DATA.dialogues, DIFF = DATA.difficulty;
+const W = 480, H = 270;                         // internal render resolution
+const view = document.getElementById('view'), ctx = view.getContext('2d');
+const low = document.createElement('canvas'); low.width = W; low.height = H;
+const lctx = low.getContext('2d'); const frame = lctx.createImageData(W, H); const buf = new Uint32Array(frame.data.buffer);
+const zbuf = new Float32Array(W);
+const $ = id => document.getElementById(id);
+
+// ---------------------------------------------------------------- textures
+function loadTex(src, tw, th) {
+  return new Promise(res => {
+    const im = new Image();
+    im.onload = () => { const c = document.createElement('canvas'); c.width = tw; c.height = th;
+      const g = c.getContext('2d'); g.drawImage(im, 0, 0, tw, th);
+      res({ w: tw, h: th, px: new Uint32Array(g.getImageData(0, 0, tw, th).data.buffer) }); };
+    im.onerror = () => { const px = new Uint32Array(tw * th).fill(0xff302030); res({ w: tw, h: th, px }); };
+    im.src = src;
+  });
+}
+const TEX = {};
+const TINTS = [[1.0, .80, .64], [.74, .98, .82], [.72, .82, 1.06]];
+
+// ---------------------------------------------------------------- sprite art
+function spriteCanvas(w, h, draw) { const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d'), w, h); return c; }
+const SPR = {
+  witness: spriteCanvas(128, 192, (g, w, h) => {
+    let gr = g.createRadialGradient(64, 70, 4, 64, 80, 70); gr.addColorStop(0, 'rgba(160,240,255,.55)'); gr.addColorStop(1, 'rgba(60,180,220,0)');
+    g.fillStyle = gr; g.fillRect(0, 0, w, h);
+    const body = g.createLinearGradient(0, 30, 0, 190); body.addColorStop(0, 'rgba(190,245,255,.78)'); body.addColorStop(.5, 'rgba(110,215,245,.5)'); body.addColorStop(1, 'rgba(80,190,235,.05)');
+    g.fillStyle = body; g.beginPath(); g.ellipse(64, 62, 26, 32, 0, 0, 7); g.fill();
+    g.beginPath(); g.moveTo(34, 70); g.quadraticCurveTo(30, 150, 46, 186); g.lineTo(58, 168); g.lineTo(70, 188); g.lineTo(82, 166); g.lineTo(96, 184);
+    g.quadraticCurveTo(100, 140, 94, 70); g.closePath(); g.fill();
+    g.fillStyle = '#0E3A4C'; g.beginPath(); g.ellipse(54, 60, 5, 7, 0, 0, 7); g.ellipse(74, 60, 5, 7, 0, 0, 7); g.fill();
+    g.fillStyle = '#F0FFFF'; g.beginPath(); g.arc(55, 58, 1.8, 0, 7); g.arc(75, 58, 1.8, 0, 7); g.fill();
+  }),
+  hollow: spriteCanvas(128, 224, (g, w, h) => drawHollow(g, w, h, false)),
+  hollowStun: spriteCanvas(128, 224, (g, w, h) => drawHollow(g, w, h, true)),
+  seal: spriteCanvas(128, 128, (g, w, h) => {
+    let gr = g.createRadialGradient(64, 64, 6, 64, 64, 64); gr.addColorStop(0, 'rgba(200,250,255,.9)'); gr.addColorStop(.35, 'rgba(70,200,240,.5)'); gr.addColorStop(1, 'rgba(40,150,200,0)');
+    g.fillStyle = gr; g.fillRect(0, 0, w, h);
+    g.strokeStyle = '#6BE1FF'; g.lineWidth = 3; g.beginPath(); g.arc(64, 64, 40, 0, 7); g.stroke();
+    g.lineWidth = 1.5; g.beginPath(); g.arc(64, 64, 30, 0, 7); g.stroke();
+    g.fillStyle = '#E8FDFF'; g.font = 'bold 16px Georgia'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    'VJGMGA'.split('').forEach((c, i) => { const a = i / 6 * Math.PI * 2; g.fillText(c, 64 + Math.cos(a) * 35, 64 + Math.sin(a) * 35); });
+    g.beginPath(); g.moveTo(64, 46); g.lineTo(78, 72); g.lineTo(50, 72); g.closePath(); g.stroke();
+  }),
+  door: spriteCanvas(128, 192, (g, w, h) => {
+    let gr = g.createRadialGradient(64, 90, 10, 64, 100, 90); gr.addColorStop(0, 'rgba(150,180,255,.55)'); gr.addColorStop(1, 'rgba(80,100,255,0)');
+    g.fillStyle = gr; g.fillRect(0, 0, w, h);
+    g.fillStyle = '#1B1638'; g.strokeStyle = '#B8935A'; g.lineWidth = 4;
+    g.beginPath(); g.moveTo(22, 190); g.lineTo(22, 70); g.arc(64, 70, 42, Math.PI, 0); g.lineTo(106, 190); g.closePath(); g.fill(); g.stroke();
+    g.fillStyle = '#DDE6FF'; g.beginPath(); g.arc(64, 70, 16, 0, 7); g.fill();
+    g.fillStyle = '#1B1638'; g.beginPath(); g.arc(71, 66, 14, 0, 7); g.fill();
+    g.strokeStyle = 'rgba(150,180,255,.6)'; g.lineWidth = 2; g.beginPath(); g.moveTo(64, 110); g.lineTo(64, 186); g.stroke();
+  }),
+};
+function drawHollow(g, w, h, stun) {
+  let gr = g.createRadialGradient(64, 120, 10, 64, 120, 100); gr.addColorStop(0, stun ? 'rgba(255,255,230,.35)' : 'rgba(120,10,30,.35)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = gr; g.fillRect(0, 0, w, h);
+  g.fillStyle = stun ? '#3A3446' : '#0B0710';
+  g.beginPath(); g.moveTo(64, 10); g.quadraticCurveTo(100, 18, 102, 70); g.lineTo(122, 220); g.lineTo(100, 200); g.lineTo(86, 222); g.lineTo(72, 202);
+  g.lineTo(56, 222); g.lineTo(42, 200); g.lineTo(26, 222); g.lineTo(6, 220); g.lineTo(26, 70); g.quadraticCurveTo(28, 18, 64, 10); g.fill();
+  g.strokeStyle = stun ? '#6A607A' : '#2A1626'; g.lineWidth = 3; g.beginPath(); g.moveTo(24, 92); g.lineTo(2, 150); g.moveTo(104, 92); g.lineTo(126, 150); g.stroke();
+  g.fillStyle = stun ? '#CFCFE0' : '#FF2A44'; g.shadowColor = stun ? '#fff' : '#ff1030'; g.shadowBlur = 14;
+  g.beginPath(); g.ellipse(50, 52, 7, 4, 0, 0, 7); g.ellipse(78, 52, 7, 4, 0, 0, 7); g.fill(); g.shadowBlur = 0;
+}
+
+// ---------------------------------------------------------------- audio
+let AC = null;
+let ambientNodes = null;
+let backgroundAudio = null;
+let footstepsAudio = null;
+function initFileAudio() {
+  try {
+    if (!backgroundAudio && DATA.sounds && DATA.sounds.background) {
+      backgroundAudio = new Audio(DATA.sounds.background);
+      backgroundAudio.loop = true;
+      backgroundAudio.preload = 'auto';
+      backgroundAudio.volume = Math.min(1, 0.24 * DATA.volume);
+    }
+    if (!footstepsAudio && DATA.sounds && DATA.sounds.footsteps) {
+      footstepsAudio = new Audio(DATA.sounds.footsteps);
+      footstepsAudio.preload = 'auto';
+      footstepsAudio.volume = Math.min(1, 0.65 * DATA.volume);
+    }
+    if (backgroundAudio && backgroundAudio.paused) {
+      const p = backgroundAudio.play();
+      if (p && p.catch) p.catch(() => {});
+    }
+  } catch (e) {}
+}
+function playFootsteps() {
+  try {
+    if (footstepsAudio) {
+      footstepsAudio.currentTime = 0;
+      const p = footstepsAudio.play();
+      if (p && p.catch) p.catch(() => {});
+    }
+  } catch (e) {}
+}
+function tone(freq, dur, vol, decay) {
+  if (!AC) return;
+  try {
+    const o = AC.createOscillator(), gn = AC.createGain(), t = AC.currentTime, v = vol * DATA.volume;
+    o.frequency.setValueAtTime(freq, t); if (decay) o.frequency.exponentialRampToValueAtTime(freq * .55, t + dur);
+    gn.gain.setValueAtTime(0, t); gn.gain.linearRampToValueAtTime(v, t + .01); gn.gain.exponentialRampToValueAtTime(.0001, t + dur);
+    o.connect(gn).connect(AC.destination); o.start(t); o.stop(t + dur + .02);
+  } catch (e) {}
+}
+function startAmbient() {
+  initFileAudio();
+  if (!AC || ambientNodes) return;
+  try {
+    const master = AC.createGain();
+    const low = AC.createOscillator(), mid = AC.createOscillator();
+    const lowGain = AC.createGain(), midGain = AC.createGain();
+    const lfo = AC.createOscillator(), lfoGain = AC.createGain();
+    low.type = 'sine'; low.frequency.value = 55;
+    mid.type = 'triangle'; mid.frequency.value = 82.4;
+    lowGain.gain.value = 0.72; midGain.gain.value = 0.22;
+    lfo.frequency.value = 0.18; lfoGain.gain.value = 0.004;
+    lfo.connect(lfoGain).connect(master.gain);
+    low.connect(lowGain).connect(master); mid.connect(midGain).connect(master);
+    master.gain.value = 0.0001;
+    master.connect(AC.destination);
+    low.start(); mid.start(); lfo.start();
+    ambientNodes = { master, low, mid, lfo };
+  } catch (e) {}
+}
+function updateAmbient() {
+  if (AC && ambientNodes) {
+    const target = (G.mode === 'game' ? 0.018 : G.mode === 'pause' ? 0.004 : 0.008) * DATA.volume;
+    try { ambientNodes.master.gain.setTargetAtTime(target, AC.currentTime, 0.35); } catch (e) {}
+  }
+  if (backgroundAudio) {
+    const targetVolume = (G.mode === 'game' ? 0.24 : G.mode === 'pause' ? 0.08 : 0.04) * DATA.volume;
+    backgroundAudio.volume = Math.max(0, Math.min(1, targetVolume));
+    if (G.mode === 'game' || G.mode === 'pause') {
+      if (backgroundAudio.paused) { const p = backgroundAudio.play(); if (p && p.catch) p.catch(() => {}); }
+    } else if (!backgroundAudio.paused) {
+      backgroundAudio.pause();
+    }
+  }
+}
+const SND = { click: () => tone(660, .06, .12), ok: () => tone(880, .2, .16), warn: () => tone(115, .25, .2), flash: () => tone(540, .3, .2, true),
+              step: () => { tone(130, .05, .05, true); playFootsteps(); }, beat: () => tone(58, .12, .3, true), whisper: () => tone(310, .12, .05) };
+
+// ---------------------------------------------------------------- state
+const G = { level: 0, clues: new Set(), hp: 100, stm: 100, oil: 100, x: 1.5, y: 1.5, a: 0, mode: 'start',
+            ex: 0, ey: 0, alert: false, stun: 0, cool: 0, bob: 0, step: 0, stepT: 0, beatT: 0, flash: 0, mini: true, t: 0, toastT: 0 };
+const keys = {};
+function save() { try { localStorage.setItem('ce3d', JSON.stringify({ level: G.level, clues: [...G.clues], hp: G.hp })); } catch (e) {} }
+function loadSave() { try { return JSON.parse(localStorage.getItem('ce3d') || 'null'); } catch (e) { return null; } }
+function lev() { return LEVELS[G.level]; }
+function cell(x, y) { const m = lev().map; const ix = Math.floor(x), iy = Math.floor(y);
+  if (iy < 0 || iy >= m.length || ix < 0 || ix >= m[0].length) return 1; return m[iy][ix] === '1' ? 1 : 0; }
+function free(x, y, r = .18) { return !cell(x - r, y - r) && !cell(x + r, y - r) && !cell(x - r, y + r) && !cell(x + r, y + r); }
+
+function startLevel(i, keepHp) {
+  G.level = i; const L = lev();
+  [G.x, G.y] = L.start; G.a = 0; [G.ex, G.ey] = L.enemy; G.alert = false; G.stun = 0;
+  if (!keepHp) G.hp = 100; G.stm = 100; G.oil = 100;
+  $('lvlname').textContent = `Chapter ${i + 1} · ${L.name}`;
+  G.wall = TEX['wall' + i]; G.tint = TINTS[i % 3];
+  save(); updateHud();
+}
+function toast(msg, s = 3) { $('toast').textContent = msg; $('toast').style.opacity = 1; G.toastT = s; }
+
+// ---------------------------------------------------------------- overlays
+const OVS = ['ov-start', 'ov-pause', 'ov-cipher', 'ov-journal', 'ov-msg'];
+function show(id) { OVS.forEach(o => $(o).classList.toggle('show', o === id)); $('dlg').classList.remove('show'); }
+function hideAll() { OVS.forEach(o => $(o).classList.remove('show')); $('dlg').classList.remove('show'); }
+function setMode(m) {
+  G.mode = m;
+  if (m === 'game') { hideAll(); lock(); } else if (document.pointerLockElement) document.exitPointerLock();
+}
+let lockOK = true;   // Streamlit's iframe sandbox blocks pointer lock, so fall back to drag look after the first refusal
+document.addEventListener('pointerlockerror', () => { lockOK = false; });
+function lock() { view.focus(); if (!lockOK) return; try { const p = view.requestPointerLock(); if (p && p.catch) p.catch(() => { lockOK = false; }); } catch (e) { lockOK = false; } }
+function tiles(text, ok) { return `<div class="tiles${ok ? ' ok' : ''}">` + text.split(' ').map(w => '<div class="w">' + [...w].map(c => `<b>${c}</b>`).join('') + '</div>').join('') + '</div>'; }
+const WHEEL = Array.from({ length: 26 }, (_, i) => `<div><b class="e">${String.fromCharCode(65 + (i + 2) % 26)}</b><b class="d">${String.fromCharCode(65 + i)}</b></div>`).join('');
+$('c-wheel').innerHTML = WHEEL; $('j-wheel').innerHTML = WHEEL;
+
+function message(kick, title, body, buttons, extra = '') {
+  $('m-kick').textContent = kick; $('m-title').textContent = title; $('m-body').textContent = body; $('m-extra').innerHTML = extra;
+  const box = $('m-btns'); box.innerHTML = '';
+  buttons.forEach(([label, fn, pri]) => { const b = document.createElement('button'); b.textContent = label; if (pri) b.className = 'pri';
+    b.onclick = () => { SND.click(); fn(); }; box.appendChild(b); });
+  setMode('msg'); show('ov-msg');
+}
+
+// dialogue
+let D = null;
+function talk(kind) {
+  const L = lev();
+  if (kind === 'intro') D = { who: L.speaker, lines: [L.intro, ...L.opening], choices: L.choices, i: 0 };
+  else { const d = DIALOGUES[kind]; D = { who: d[0], lines: d[1], choices: d[2], i: 0 }; }
+  setMode('dialogue'); OVS.forEach(o => $(o).classList.remove('show')); renderDlg();
+}
+function renderDlg() {
+  const box = $('dlg'); box.classList.add('show'); box.classList.toggle('hollow', D.who === 'The Hollow');
+  $('d-who').textContent = `${D.who}  ·  ${D.i + 1} of ${D.lines.length}`;
+  $('d-line').innerHTML = D.lines[D.i].split(' ').map((w, k) => `<span style="animation-delay:${k * .04}s">${w.replace(/</g, '&lt;')}</span>`).join(' ');
+  const ch = $('d-ch'); ch.innerHTML = '';
+  if (D.i < D.lines.length - 1) { $('d-tip').textContent = 'Press Enter or Space, or click to continue';
+    const b = document.createElement('button'); b.textContent = 'Continue'; b.className = 'pri'; b.onclick = () => dlgNext(); ch.appendChild(b); }
+  else { $('d-tip').textContent = 'Choose with the mouse or press 1 to ' + D.choices.length;
+    D.choices.forEach(([label, act], k) => { const b = document.createElement('button'); b.textContent = `${k + 1}. ${label}`; b.onclick = () => dlgChoose(k); ch.appendChild(b); }); }
+}
+function dlgNext() { SND.click(); if (D.i < D.lines.length - 1) { D.i++; renderDlg(); } }
+function dlgChoose(k) { const c = D.choices[k]; if (!c) return; SND.click();
+  if (c[1] === 'close') { D = null; toast('The words linger in the cold air.'); setMode('game'); } else talk(c[1]); }
+
+// cipher
+function openCipher() {
+  const L = lev(); $('c-kick').textContent = `Seal ${G.level + 1} · ${L.name}`; $('c-tiles').innerHTML = tiles(L.cipher);
+  $('ans').value = ''; $('err').textContent = ''; $('hint').textContent = ''; $('c-wheel').style.display = 'none';
+  setMode('cipher'); show('ov-cipher'); setTimeout(() => $('ans').focus(), 30);
+}
+function submitCipher() {
+  const L = lev(); const guess = $('ans').value.toUpperCase().replace(/[^A-Z]/g, ''); const want = L.answer.replace(/[^A-Z]/g, '');
+  if (!guess) { $('err').textContent = 'Type the decoded sentence first.'; return; }
+  if (guess === want) {
+    G.clues.add(G.level); save(); SND.ok(); updateHud();
+    const last = G.level === LEVELS.length - 1;
+    message(`Seal ${G.level + 1} broken`, 'The seal gives way', last ? 'The final seal falls silent. The Moon Door at the far end of the crypt is open.'
+      : 'The words burn green, then sink into the stone. Find the Moon Door to go deeper.',
+      [['Back to exploring', () => setMode('game'), true]], tiles(L.answer, true));
+    return;
+  }
+  SND.warn();
+  const d = DIFF[DATA.diffName];
+  if (DATA.diffName === 'Nightmare') {
+    G.clues.clear(); startLevel(0);
+    message('Wrong answer', 'The manor folds in on itself', 'On Nightmare a wrong cipher sends you back to the very first seal.', [['Try again', () => setMode('game'), true]]);
+    return;
+  }
+  G.hp = Math.max(0, G.hp - d.wrong); updateHud(); save();
+  if (G.hp <= 0) return gameOver();
+  $('err').textContent = `The seal rejects you. You lose ${d.wrong} health.`;
+}
+
+function openJournal() {
+  $('j-body').innerHTML = LEVELS.map((L, i) => {
+    const ok = G.clues.has(i), act = i === G.level && !ok;
+    const st = ok ? '<span style="color:#9DF5BF">Broken</span>' : act ? '<span style="color:#E8A050">Active</span>' : '<span class="muted">Sealed</span>';
+    return `<div class="seal-row"><b style="font-family:Cinzel,serif">Seal ${i + 1}: ${L.name}</b> · ${st}` + (ok || act ? tiles(ok ? L.answer : L.cipher, ok) : '') + '</div>';
+  }).join('');
+  setMode('journal'); show('ov-journal');
+}
+
+function interact() {
+  const L = lev(), d = (p) => Math.hypot(p[0] - G.x, p[1] - G.y);
+  if (d(L.friend) < 1.6) return talk(DATA.flower && G.level === 0 ? 'flower_story' : 'intro');
+  if (d(L.clue) < 1.5 && !G.clues.has(G.level)) return openCipher();
+  if (d(L.exit) < 1.6) {
+    if (!G.clues.has(G.level)) { SND.warn(); return toast('The Moon Door is sealed. Decode the cyan seal first.', 3.5); }
+    if (G.level < LEVELS.length - 1) {
+      SND.ok(); startLevel(G.level + 1); toast('The staircase descends. Something below has heard you.', 4); talk('intro'); return;
+    }
+    return victory();
+  }
+  toast('Nothing close enough. Look for the Witness, the cyan seal or the Moon Door.', 2.5);
+}
+function lantern() {
+  if (G.oil < 30) return toast('Your lantern sputters. Not enough oil yet.', 2);
+  G.oil -= 35; G.flash = 1; SND.flash();
+  const dist = Math.hypot(G.ex - G.x, G.ey - G.y);
+  if (dist < 6.5) { G.stun = 3.2; const vx = (G.ex - G.x) / dist, vy = (G.ey - G.y) / dist;
+    for (let k = 0; k < 10; k++) { const nx = G.ex + vx * .18, ny = G.ey + vy * .18; if (free(nx, ny, .2)) { G.ex = nx; G.ey = ny; } }
+    toast('The Hollow shrieks and staggers back, blinded.', 2.5); }
+}
+function victory() {
+  try { localStorage.removeItem('ce3d'); } catch (e) {}
+  const e = DATA.flower ? DATA.ending_complete : DATA.ending_partial;
+  message('Ending', e[0], e[1], [['Play again', () => newGame(), true]]);
+  if (!DATA.flower) $('m-body').textContent += ' Restore the flower memory in the side stories for the fuller ending.';
+}
+function gameOver() {
+  SND.warn();
+  message('Game over', 'The manor claims you', 'Your lantern gutters out and the Hollow\'s hands close for the last time. Try another path.',
+    [['Retry this chapter', () => { startLevel(G.level); setMode('game'); }, true], ['Start over', () => newGame()]]);
+}
+function newGame() { G.clues.clear(); startLevel(0); talk('intro'); }
+
+// ---------------------------------------------------------------- input
+document.addEventListener('keydown', e => {
+  const k = e.key.toLowerCase(); keys[k] = true;
+  if (G.mode === 'cipher') { if (e.key === 'Enter') submitCipher(); if (e.key === 'Escape') setMode('game'); return; }
+  if (G.mode === 'dialogue') {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); D.i < D.lines.length - 1 ? dlgNext() : dlgChoose(0); }
+    if (['1', '2', '3'].includes(e.key) && D.i >= D.lines.length - 1) dlgChoose(+e.key - 1);
+    return;
+  }
+  if (G.mode === 'journal' && (k === 'j' || e.key === 'Escape')) return setMode('game');
+  if (G.mode !== 'game') return;
+  if ([' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) e.preventDefault();
+  if (k === 'e') interact(); else if (k === ' ') lantern(); else if (k === 'j') openJournal();
+  else if (k === 'm') G.mini = !G.mini; else if (e.key === 'Escape') pause();
+});
+document.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+// Mouse look: pointer lock when the browser allows it, otherwise click and drag to look.
+let dragging = false, lastMX = null;
+document.addEventListener('mousemove', e => {
+  if (G.mode !== 'game') return;
+  if (document.pointerLockElement === view) { G.a += e.movementX * DATA.sens; return; }
+  if (dragging) { const mx = e.clientX; if (lastMX !== null) G.a += (mx - lastMX) * DATA.sens * 1.6; lastMX = mx; }
+});
+view.addEventListener('mousedown', e => {
+  if (G.mode !== 'game') return; view.focus();
+  if (e.button === 2) { lantern(); return; }
+  dragging = true; lastMX = e.clientX; if (document.pointerLockElement !== view) lock();
+});
+document.addEventListener('mouseup', () => { dragging = false; lastMX = null; });
+view.addEventListener('contextmenu', e => e.preventDefault());
+view.addEventListener('blur', () => { if (G.mode === 'game') { for (const k in keys) keys[k] = false; } });
+document.addEventListener('pointerlockchange', () => { if (!document.pointerLockElement && G.mode === 'game') pause(); });
+window.addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
+function pause() { setMode('pause'); show('ov-pause'); }
+
+$('b-new').onclick = () => { initAudio(); newGame(); };
+$('b-cont').onclick = () => { initAudio(); const s = loadSave(); G.clues = new Set(s.clues); startLevel(s.level); G.hp = Math.max(1, s.hp || 100); updateHud(); setMode('game'); toast(`You return to ${lev().name}.`); };
+$('b-resume').onclick = () => setMode('game');
+$('b-journal').onclick = () => openJournal();
+$('b-restart').onclick = () => newGame();
+$('b-break').onclick = () => submitCipher();
+$('b-hint').onclick = () => { const L = lev(); $('hint').textContent = `${L.hint} The first word, ${L.cipher.split(' ')[0]}, reads as ${L.answer.split(' ')[0]}.`; };
+$('b-wheel').onclick = () => { const w = $('c-wheel'); w.style.display = w.style.display === 'none' ? 'flex' : 'none'; };
+$('b-leave').onclick = () => setMode('game');
+$('b-jclose').onclick = () => setMode('game');
+function initAudio() {
+  try {
+    AC = AC || new (window.AudioContext || window.webkitAudioContext)();
+    AC.resume();
+    startAmbient();
+    updateAmbient();
+  } catch (e) {}
+}
+
+// ---------------------------------------------------------------- update
+function update(dt) {
+  G.t += dt; G.oil = Math.min(100, G.oil + dt * 4); G.flash = Math.max(0, G.flash - dt * 2.2);
+  updateAmbient();
+  if (G.toastT > 0) { G.toastT -= dt; if (G.toastT <= 0) $('toast').style.opacity = 0; }
+  if (G.mode !== 'game') return;
+  const sprint = keys['shift'] && G.stm > 2;
+  let spd = 2.3 * (DATA.diffName === 'Story' ? 1.05 : DATA.diffName === 'Nightmare' ? .9 : 1);
+  if (sprint) { spd *= 1.65; G.stm = Math.max(0, G.stm - dt * 28); } else G.stm = Math.min(100, G.stm + dt * 18);
+  const fw = (keys['w'] || keys['arrowup'] ? 1 : 0) - (keys['s'] || keys['arrowdown'] ? 1 : 0);
+  const sf = (keys['d'] ? 1 : 0) - (keys['a'] ? 1 : 0);
+  if (keys['arrowleft']) G.a -= 1.9 * dt; if (keys['arrowright']) G.a += 1.9 * dt;
+  const ca = Math.cos(G.a), sa = Math.sin(G.a);
+  let dx = (ca * fw - sa * sf), dy = (sa * fw + ca * sf); const len = Math.hypot(dx, dy) || 1; dx = dx / len * spd * dt; dy = dy / len * spd * dt;
+  if (fw || sf) {
+    if (free(G.x + dx, G.y)) G.x += dx; if (free(G.x, G.y + dy)) G.y += dy;
+    G.step += dt * (sprint ? 11 : 7); G.bob = DATA.bob ? Math.sin(G.step) * (sprint ? 5 : 3) : 0;
+    G.stepT += dt; if (G.stepT > (sprint ? .28 : .44)) { G.stepT = 0; SND.step(); }
+  } else { G.bob *= .85; G.stepT = 0; }
+
+  // the Hollow
+  const d = DIFF[DATA.diffName]; const dist = Math.hypot(G.ex - G.x, G.ey - G.y);
+  G.stun = Math.max(0, G.stun - dt); G.cool = Math.max(0, G.cool - dt);
+  if (dist < d.alert) G.alert = true;
+  if (dist < 4.5) { G.beatT += dt; if (G.beatT > Math.max(.32, dist * .18)) { G.beatT = 0; SND.beat(); } }
+  if (G.alert && G.stun <= 0) {
+    if (dist > .66) { const s = d.speed * dt, nx = G.ex + (G.x - G.ex) / dist * s, ny = G.ey + (G.y - G.ey) / dist * s;
+      if (free(nx, G.ey, .22)) G.ex = nx; if (free(G.ex, ny, .22)) G.ey = ny; }
+    else if (G.cool <= 0) { G.hp = Math.max(0, G.hp - d.damage); G.cool = DATA.diffName === 'Nightmare' ? .95 : 1.2; SND.warn();
+      toast('The Hollow struck you. Run, or flash your lantern.', 2.2); save(); if (G.hp <= 0) gameOver(); }
+  }
+  if (dist < 2.5 && Math.random() < .008) SND.whisper();
+
+  // context prompt
+  const L = lev(), pd = p => Math.hypot(p[0] - G.x, p[1] - G.y); let pr = '';
+  if (pd(L.friend) < 1.6) pr = `Press E to speak with ${L.speaker.toLowerCase()}`;
+  else if (pd(L.clue) < 1.5 && !G.clues.has(G.level)) pr = 'Press E to read the cyan seal';
+  else if (pd(L.exit) < 1.6) pr = G.clues.has(G.level) ? 'Press E to open the Moon Door' : 'The Moon Door is sealed';
+  const p = $('prompt'); p.style.display = pr ? 'block' : 'none'; p.textContent = pr;
+  updateHud();
+}
+function updateHud() {
+  $('hp').style.width = G.hp + '%'; $('stm').style.width = G.stm + '%'; $('oil').style.width = G.oil + '%';
+  [...$('seals').querySelectorAll('i')].forEach((el, i) => { el.style.background = G.clues.has(i) ? 'rgba(157,245,191,.6)' : 'transparent';
+    el.style.borderColor = G.clues.has(i) ? '#9DF5BF' : i === G.level ? '#6BE1FF' : 'rgba(255,255,255,.25)'; });
+}
+
+// ---------------------------------------------------------------- render
+function shadePix(c, f, tr, tg, tb) {
+  const r = Math.min(255, (c & 255) * f * tr), g = Math.min(255, ((c >> 8) & 255) * f * tg), b = Math.min(255, ((c >> 16) & 255) * f * tb);
+  return 0xff000000 | (b << 16) | (g << 8) | r;
+}
+function render() {
+  const fov = .66, dirX = Math.cos(G.a), dirY = Math.sin(G.a), plX = -dirY * fov, plY = dirX * fov;
+  const hor = (H >> 1) + Math.round(G.bob), [tr, tg, tb] = G.tint;
+  const flick = .92 + .08 * Math.sin(G.t * 7) * Math.sin(G.t * 3.1);
+  const F = TEX.floor, C = TEX.ceil, posZ = .5 * H;
+  // floor and ceiling
+  const rd0x = dirX - plX, rd0y = dirY - plY, rd1x = dirX + plX, rd1y = dirY + plY;
+  for (let y = 0; y < H; y++) {
+    const isFloor = y > hor, p = isFloor ? y - hor : hor - y; if (p === 0) { for (let x = 0; x < W; x++) buf[y * W + x] = 0xff000000; continue; }
+    const rowD = posZ / p, sx = rowD * (rd1x - rd0x) / W, sy = rowD * (rd1y - rd0y) / W;
+    let fx = G.x + rowD * rd0x, fy = G.y + rowD * rd0y; const T = isFloor ? F : C;
+    const f = Math.min(1.05, flick / (1 + rowD * rowD * .09)) * (isFloor ? .95 : .75);
+    for (let x = 0; x < W; x++) {
+      const tx = ((T.w * (fx - Math.floor(fx))) | 0) & (T.w - 1), ty = ((T.h * (fy - Math.floor(fy))) | 0) & (T.h - 1);
+      buf[y * W + x] = shadePix(T.px[ty * T.w + tx], f, tr, tg, tb); fx += sx; fy += sy;
+    }
+  }
+  // walls (DDA)
+  const T = G.wall;
+  for (let x = 0; x < W; x++) {
+    const cam = 2 * x / W - 1, rx = dirX + plX * cam, ry = dirY + plY * cam;
+    let mx = Math.floor(G.x), my = Math.floor(G.y);
+    const ddx = Math.abs(1 / rx), ddy = Math.abs(1 / ry); let stx, sty, sdx, sdy, side = 0;
+    if (rx < 0) { stx = -1; sdx = (G.x - mx) * ddx; } else { stx = 1; sdx = (mx + 1 - G.x) * ddx; }
+    if (ry < 0) { sty = -1; sdy = (G.y - my) * ddy; } else { sty = 1; sdy = (my + 1 - G.y) * ddy; }
+    for (let n = 0; n < 64; n++) { if (sdx < sdy) { sdx += ddx; mx += stx; side = 0; } else { sdy += ddy; my += sty; side = 1; } if (cell(mx + .5, my + .5)) break; }
+    const pd = side === 0 ? sdx - ddx : sdy - ddy; zbuf[x] = pd;
+    const lh = H / pd, top = Math.floor(hor - lh / 2), bot = Math.floor(hor + lh / 2);
+    let wx = side === 0 ? G.y + pd * ry : G.x + pd * rx; wx -= Math.floor(wx);
+    let tx = (wx * T.w) | 0; if ((side === 0 && rx > 0) || (side === 1 && ry < 0)) tx = T.w - tx - 1;
+    const f = Math.min(1.1, flick / (1 + pd * pd * .07)) * (side ? .78 : 1);
+    const y0 = Math.max(0, top), y1 = Math.min(H - 1, bot);
+    for (let y = y0; y <= y1; y++) { const ty = Math.min(T.h - 1, (((y - top) / lh) * T.h) | 0); buf[y * W + x] = shadePix(T.px[ty * T.w + tx], f, tr, tg, tb); }
+  }
+  lctx.putImageData(frame, 0, 0);
+  ctx.imageSmoothingEnabled = true; ctx.drawImage(low, 0, 0, view.width, view.height);
+
+  // sprites
+  const L = lev(), sc = view.width / W, scy = view.height / H, list = [];
+  list.push({ x: L.friend[0], y: L.friend[1], img: SPR.witness, h: .85, lift: .1 + Math.sin(G.t * 2) * .06 });
+  list.push({ x: L.exit[0], y: L.exit[1], img: SPR.door, h: 1.0, lift: 0 });
+  if (!G.clues.has(G.level)) list.push({ x: L.clue[0], y: L.clue[1], img: SPR.seal, h: .42 * (1 + .08 * Math.sin(G.t * 4)), lift: .35 });
+  list.push({ x: G.ex, y: G.ey, img: G.stun > 0 ? SPR.hollowStun : SPR.hollow, h: 1.05, lift: 0 });
+  list.forEach(s => s.d = (s.x - G.x) ** 2 + (s.y - G.y) ** 2); list.sort((a, b) => b.d - a.d);
+  const inv = 1 / (plX * dirY - dirX * plY);
+  for (const s of list) {
+    const rx = s.x - G.x, ry = s.y - G.y, tX = inv * (dirY * rx - dirX * ry), tY = inv * (-plY * rx + plX * ry);
+    if (tY <= .1) continue;
+    const scx = (W / 2) * (1 + tX / tY), unit = H / tY, sh = unit * s.h, sw = sh * s.img.width / s.img.height;
+    const bottom = hor + unit * .5 - unit * s.lift, topY = bottom - sh, x0 = Math.floor(scx - sw / 2), x1 = Math.floor(scx + sw / 2);
+    for (let x = Math.max(0, x0); x < Math.min(W, x1); x++) {
+      if (tY >= zbuf[x]) continue;
+      const tx = Math.floor((x - x0) / sw * s.img.width);
+      ctx.drawImage(s.img, tx, 0, 1, s.img.height, x * sc, topY * scy, sc + .5, sh * scy);
+    }
+  }
+  // post effects
+  const vw = view.width, vh = view.height;
+  const vg = ctx.createRadialGradient(vw / 2, vh / 2, vh * .35, vw / 2, vh / 2, vh * .95); vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,.72)');
+  ctx.fillStyle = vg; ctx.fillRect(0, 0, vw, vh);
+  const de = Math.hypot(G.ex - G.x, G.ey - G.y);
+  if (de < 4) { ctx.fillStyle = `rgba(150,15,35,${(1 - de / 4) * .38 * (.6 + .4 * Math.sin(G.t * 9))})`; ctx.fillRect(0, 0, vw, vh); }
+  if (G.flash > 0) { ctx.fillStyle = `rgba(255,250,225,${G.flash * .85})`; ctx.fillRect(0, 0, vw, vh); }
+  drawMini();
+}
+function drawMini() {
+  const m = $('mini'); m.style.display = G.mini ? 'block' : 'none'; if (!G.mini) return;
+  const g = m.getContext('2d'), map = lev().map, cs = Math.min(m.width / map[0].length, m.height / map.length), ox = (m.width - cs * map[0].length) / 2, oy = (m.height - cs * map.length) / 2;
+  g.clearRect(0, 0, m.width, m.height);
+  map.forEach((row, y) => [...row].forEach((c, x) => { g.fillStyle = c === '1' ? 'rgba(184,147,90,.55)' : 'rgba(30,18,36,.9)'; g.fillRect(ox + x * cs, oy + y * cs, cs - 1, cs - 1); }));
+  const dot = (p, col, r = 3) => { g.fillStyle = col; g.beginPath(); g.arc(ox + p[0] * cs, oy + p[1] * cs, r, 0, 7); g.fill(); };
+  const L = lev(); dot(L.exit, '#8FA6FF'); dot(L.friend, '#6BE1FF'); if (!G.clues.has(G.level)) dot(L.clue, '#E8FDFF', 2.5);
+  if (G.alert || Math.hypot(G.ex - G.x, G.ey - G.y) < 5.5) dot([G.ex, G.ey], '#FF3B55');
+  dot([G.x, G.y], '#F4E6D2'); g.strokeStyle = '#F4E6D2'; g.beginPath(); g.moveTo(ox + G.x * cs, oy + G.y * cs);
+  g.lineTo(ox + (G.x + Math.cos(G.a) * .9) * cs, oy + (G.y + Math.sin(G.a) * .9) * cs); g.stroke();
+}
+
+// ---------------------------------------------------------------- boot
+let last = performance.now();
+function loop(now) { const dt = Math.min(.05, (now - last) / 1000); last = now; update(dt); render(); requestAnimationFrame(loop); }
+(async () => {
+  TEX.floor = await loadTex(DATA.tex.floor, 256, 256); TEX.ceil = await loadTex(DATA.tex.ceiling, 256, 256);
+  for (let i = 0; i < LEVELS.length; i++) TEX['wall' + i] = await loadTex(DATA.tex['wall' + i], 256, 256);
+  const s = loadSave(); if (s && (s.level > 0 || (s.clues || []).length)) { $('b-cont').style.display = 'inline-block'; $('b-cont').textContent = `Continue chapter ${s.level + 1}`; }
+  startLevel(0); requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>

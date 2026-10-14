@@ -1,0 +1,8 @@
+{
+  "level": 0,
+  "health": 100,
+  "clues": [],
+  "won": false,
+  "difficulty": "Normal",
+  "quest_flags": []
+}
